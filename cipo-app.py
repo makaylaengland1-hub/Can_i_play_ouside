@@ -36,18 +36,17 @@ df = pd.read_sql(query, engine)
 # Convert date column
 df["date"] = pd.to_datetime(df["date"])
 
+
+df["date_only"] = df["date"].dt.date.astype(str)
+df["time_only"] = df["date"].dt.strftime("%I:%M %p")
+
+
 # -----------------------------
 # Metric choices for dropdown
 # -----------------------------
-metric_options = {
-    "Temperature (°F)": "temperature_2m",
-    "Precipitation (inches)": "precipitation",
-    "Precipitation Probability (%)": "precipitation_probability",
-    "Wind Gusts (mph)": "wind_gusts_10m",
-    "Wind Speed (mph)": "wind_speed_10m",
-    "UV Index": "uv_index",
-    "Precipitation Add": "precipitation_add"
-}
+
+date = sorted(df["date_only"].dropna().unique())
+time = sorted(df["time_only"].dropna().unique())
 
 # -----------------------------
 # Create Dash app
@@ -67,7 +66,7 @@ app.layout = html.Div(
     children=[
 
         html.H1(
-            "Hourly Weather Forecast Dashboard",
+            "Can I Play Outside",
             style={
                 "textAlign": "center",
                 "marginBottom": "10px",
@@ -85,21 +84,48 @@ app.layout = html.Div(
         ),
 
         # Filter section
-        html.Div([
-            html.Label(
-                "Select a weather metric:",
-                style={"fontWeight": "bold", "marginBottom": "8px", "display": "block"}
-            ),
-            dcc.Dropdown(
-                id="metric-dropdown",
-                options=[{"label": label, "value": value} for label, value in metric_options.items()],
-                value="temperature_2m",
-                clearable=False,
-                style={"width": "350px"}
-            )
-        ], style={"marginBottom": "30px"}),
 
-        # KPI cards
+        html.Div([
+            html.Div([
+                html.Label(
+                    "Select a date:",
+                    style={"fontWeight": "bold", "marginBottom": "8px", "display": "block"}
+                ),
+                dcc.Dropdown(
+                    id="date-dropdown",
+                    options=[{"label": "All Dates", "value": "ALL"}] + [
+                        {"label": d, "value": d} for d in date_only
+                    ],
+                    value="ALL",
+                    clearable=False,
+                    style={"width": "250px"}
+                )
+            ]),
+
+            html.Div([
+                html.Label(
+                    "Select a time:",
+                    style={"fontWeight": "bold", "marginBottom": "8px", "display": "block"}
+                ),
+                dcc.Dropdown(
+                    id="time-dropdown",
+                    options=[{"label": "All Times", "value": "ALL"}] + [
+                        {"label": t, "value": t} for t in time_only
+                    ],
+                    value="ALL",
+                    clearable=False,
+                    style={"width": "250px"}
+                )
+            ])
+        ], style={
+            "display": "flex",
+            "justifyContent": "center",
+            "gap": "20px",
+            "marginBottom": "30px",
+            "flexWrap": "wrap"
+        }),
+
+        # KPI card
         html.Div([
             html.Div([
                 html.H4("Max Temperature", style={"marginBottom": "10px"}),
@@ -113,51 +139,40 @@ app.layout = html.Div(
                 "textAlign": "center"
             }),
 
-            html.Div([
-                html.H4("Avg Precip Probability", style={"marginBottom": "10px"}),
-                html.H2(id="avg-precip-kpi", style={"color": "#28a745"})
-            ], style={
-                "backgroundColor": "white",
-                "borderRadius": "10px",
-                "padding": "20px",
-                "boxShadow": "0 2px 8px rgba(0,0,0,0.08)",
-                "width": "250px",
-                "textAlign": "center"
-            }),
 
-            html.Div([
-                html.H4("Max Wind Speed", style={"marginBottom": "10px"}),
-                html.H2(id="max-wind-kpi", style={"color": "#dc3545"})
-            ], style={
-                "backgroundColor": "white",
-                "borderRadius": "10px",
-                "padding": "20px",
-                "boxShadow": "0 2px 8px rgba(0,0,0,0.08)",
-                "width": "250px",
-                "textAlign": "center"
-            })
-        ], style={
-            "display": "flex",
-            "justifyContent": "center",
-            "gap": "20px",
-            "marginBottom": "30px",
-            "flexWrap": "wrap"
-        }),
-
-        # Charts row 1
+        #Visual
         html.Div([
-            dcc.Graph(id="metric-line-chart")
-        ], style={
-            "backgroundColor": "white",
-            "borderRadius": "10px",
-            "padding": "15px",
-            "boxShadow": "0 2px 8px rgba(0,0,0,0.08)",
-            "marginBottom": "30px"
-        }),
-
-        # Charts row 2
-        html.Div([
-            dcc.Graph(id="precip-bar-chart")
+            dash_table.DataTable(
+                id="weather-table",
+                columns=[
+                    {"name": "Date", "id": "date_only"},
+                    {"name": "Time", "id": "time_only"},
+                    {"name": "Temperature (°F)", "id": "temperature_2m"},
+                    {"name": "UV Index", "id": "uv_index"},
+                    {"name": "Precipitation (in)", "id": "precipitation"},
+                    {"name": "Precipitation Probability (%)", "id": "precipitation_probability"},
+                    {"name": "Wind Gusts (mph)", "id": "wind_gusts_10m"},
+                    {"name": "Wind Speed (mph)", "id": "wind_speed_10m"}
+                ],
+                data=[],
+                page_size=24,
+                sort_action="native",
+                style_table={"overflowX": "auto"},
+                style_cell={
+                    "textAlign": "left",
+                    "padding": "10px",
+                    "fontFamily": "Arial",
+                    "fontSize": "14px"
+                },
+                style_header={
+                    "backgroundColor": "#e9ecef",
+                    "fontWeight": "bold"
+                },
+                style_data={
+                    "backgroundColor": "white",
+                    "color": "#212529"
+                }
+            )
         ], style={
             "backgroundColor": "white",
             "borderRadius": "10px",
@@ -167,53 +182,43 @@ app.layout = html.Div(
     ]
 )
 
+
 # -----------------------------
 # Callback for interactivity
 # -----------------------------
 @app.callback(
-    Output("metric-line-chart", "figure"),
-    Output("precip-bar-chart", "figure"),
+    Output("weather-table", "data"),
     Output("max-temp-kpi", "children"),
-    Output("avg-precip-kpi", "children"),
-    Output("max-wind-kpi", "children"),
-    Input("metric-dropdown", "value")
+    Input("date-dropdown", "value"),
+    Input("time-dropdown", "value")
 )
-def update_dashboard(selected_metric):
-    # Main line chart for selected metric
-    line_fig = px.line(
-        df,
-        x="date",
-        y=selected_metric,
-        title=f"{selected_metric.replace('_', ' ').title()} Over Time",
-        markers=True
-    )
 
-    line_fig.update_layout(
-        xaxis_title="Date/Time",
-        yaxis_title=selected_metric.replace("_", " ").title(),
-        template="plotly_white"
-    )
+def update_dashboard(selected_date, selected_time):
+    filtered_df = df.copy()
 
-    # Bar chart for precipitation probability
-    bar_fig = px.bar(
-        df,
-        x="date",
-        y="precipitation_probability",
-        title="Precipitation Probability by Hour"
-    )
+    if selected_date != "ALL":
+        filtered_df = filtered_df[filtered_df["date_only"] == selected_date]
 
-    bar_fig.update_layout(
-        xaxis_title="Date/Time",
-        yaxis_title="Precipitation Probability (%)",
-        template="plotly_white"
-    )
+    if selected_time != "ALL":
+        filtered_df = filtered_df[filtered_df["time_only"] == selected_time]
 
-    # KPI calculations
-    max_temp = f"{df['temperature_2m'].max():.1f} °F"
-    avg_precip = f"{df['precipitation_probability'].mean():.1f}%"
-    max_wind = f"{df['wind_speed_10m'].max():.1f} mph"
+    if filtered_df.empty:
+        max_temp = "No data"
+    else:
+        max_temp = f"{filtered_df['temperature_2m'].max():.1f} °F"
 
-    return line_fig, bar_fig, max_temp, avg_precip, max_wind
+    table_df = filtered_df[[
+        "date_only",
+        "time_only",
+        "temperature_2m",
+        "uv_index",
+        "precipitation",
+        "precipitation_probability",
+        "wind_gusts_10m",
+        "wind_speed_10m"
+    ]].copy()
+
+    return table_df.to_dict("records"), max_temp
 
 # -----------------------------
 # Run the app
