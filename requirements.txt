@@ -1,0 +1,5 @@
+os
+pandas
+create_engine
+Dash, dcc, html, Input, Output
+plotly.express
